@@ -107,9 +107,9 @@ void genColors(uint8_t* colors, T power) {
         poll();
         #pragma omp parallel for
         for(y = 0; y < info.height; y++) {
-            float m_x = -3 + 6.0 * x / info.width;
+            float m_x = -.8 + 1.0 * x / info.width;
             float aspect = (float)(info.height)/info.width;
-            float m_y = aspect * (-3 + 6.0 * y/info.height);
+            float m_y = aspect * (1 + 1.0 * y/info.height);
 
             std::complex<float> m(m_x, m_y);
             int i = mandelIterations<T>(m, info.iters, power);

@@ -1,4 +1,4 @@
 (all):
-	g++ -o test `pkg-config --cflags --libs sdl` \
+	g++ -o main `pkg-config --cflags --libs sdl` \
 		-Wall -Wextra -pedantic -Ofast -fopenmp -ggdb3 \
-		sdl.cpp
+		main.cpp
