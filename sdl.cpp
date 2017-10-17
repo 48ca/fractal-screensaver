@@ -9,6 +9,8 @@ struct info {
     int box_width;
     int box_height;
     int delay;
+    int wait;
+    int iters;
     int width;
     int height;
 } info;
@@ -20,7 +22,9 @@ void genInfo() {
     info.width = vidInfo->current_w;
     info.height = vidInfo->current_h;
     info.num_boxes = 30; // number of boxes across
-    info.delay = 15;
+    info.delay = 15; // in ms
+    info.wait = 5; // in seconds
+    info.iters = 100;
     info.box_width = info.width/info.num_boxes;
     info.box_height = info.box_width;
     info.num_boxes_down = info.height/info.box_height;
@@ -72,7 +76,8 @@ void render(SDL_Surface* screen, uint8_t* colors) {
     }
 }
 
-int mandelIterations(std::complex<float> m, int max, int power) {
+template <typename T>
+int mandelIterations(std::complex<float> m, int max, T power) {
     std::complex<float> z = 0;
     int i;
     for(i = 0 ; i < max ; ++i) {
@@ -94,8 +99,8 @@ uint8_t color_map[color_map_length][3] = {
 };
 uint8_t loop_every = 10;
 
-int max = 500;
-void genColors(uint8_t* colors, int power) {
+template<typename T>
+void genColors(uint8_t* colors, T power) {
     register int x;
     register int y;
     for(x = 0; x < info.width; x++) {
@@ -107,7 +112,7 @@ void genColors(uint8_t* colors, int power) {
             float m_y = aspect * (-3 + 6.0 * y/info.height);
 
             std::complex<float> m(m_x, m_y);
-            int i = mandelIterations(m, max, power);
+            int i = mandelIterations<T>(m, info.iters, power);
             float l = (float)i/loop_every;
             float p = l - std::floor(l);
             int f = (int)std::floor(l) % color_map_length;
@@ -157,12 +162,12 @@ int main()
     size_t colors_length = sizeof(uint8_t) * info.width * info.height * 3;
     uint8_t* colors = (uint8_t*)malloc(colors_length);
 
-    int p;
+    float p;
     for(;;) {
-        for(p = 2; p < 10; p++) {
-            genColors(colors, p);
+        for(p = 2; p < 10; p+=1) {
+            genColors<float>(colors, p);
             render(screen, colors);
-            wait(10);
+            wait(info.wait);
             // render(screen, NULL);
         }
     }
