@@ -1,5 +1,5 @@
 #include <SDL/SDL.h>
-#include  <stdlib.h>
+#include <stdlib.h>
 #include <complex>
 
 struct info {
@@ -7,9 +7,34 @@ struct info {
     int num_boxes_down;
     int box_width;
     int box_height;
+    int delay;
     int width;
     int height;
 } info;
+
+void genInfo() {
+
+    const SDL_VideoInfo* vidInfo = SDL_GetVideoInfo();   //<-- calls SDL_GetVideoInfo();
+
+    info.width = vidInfo->current_w;
+    info.height = vidInfo->current_h;
+    info.num_boxes = 40; // number of boxes across
+    info.delay = 10;
+    info.box_width = info.width/info.num_boxes;
+    info.box_height = info.box_width;
+    info.num_boxes_down = info.height/info.box_height;
+
+}
+
+SDL_Event event;
+void poll() {
+    SDL_PollEvent(&event);
+    switch(event.type) {
+        case SDL_QUIT:
+        case SDL_KEYDOWN:
+            exit(0);
+    }
+}
 
 void setPixel(SDL_Surface *screen, int x, int y, Uint8* colors)
 {
@@ -28,7 +53,7 @@ void render(SDL_Surface* screen, Uint8* colors) {
     register int x, y;
     register int box_x, box_y;
     register int i;
-    for (i = 0; i < info.num_boxes + info.num_boxes_down; i++)
+    for (i = 0; i < info.num_boxes + info.num_boxes_down + 1; i++)
     {
         for (box_x = i, box_y = 0; box_x >= 0; box_x--, box_y++) {
             register int initial_x = box_x * info.box_width;
@@ -41,21 +66,9 @@ void render(SDL_Surface* screen, Uint8* colors) {
         }
         SDL_BlitSurface(surface, NULL, screen, NULL);
         SDL_Flip(screen);
-        SDL_Delay(15);
+        poll();
+        SDL_Delay(info.delay);
     }
-}
-
-void genInfo() {
-
-    const SDL_VideoInfo* vidInfo = SDL_GetVideoInfo();   //<-- calls SDL_GetVideoInfo();
-
-    info.width = vidInfo->current_w;
-    info.height = vidInfo->current_h;
-    info.num_boxes = 50; // number of boxes across
-    info.box_width = info.width/info.num_boxes;
-    info.box_height = info.box_width;
-    info.num_boxes_down = info.height/info.box_height;
-
 }
 
 int mandelIterations(std::complex<float> m, int max, int power) {
@@ -73,6 +86,8 @@ void genColors(Uint8* colors, int power) {
     register int x;
     register int y;
     for(x = 0; x < info.width; x++) {
+        poll();
+        #pragma omp parallel for
         for(y = 0; y < info.height; y++) {
             float m_x = -2 + 4.0 * x / info.width;
             float aspect = (float)(info.height)/info.width;
@@ -85,6 +100,18 @@ void genColors(Uint8* colors, int power) {
             colors[y * info.width * 3 + x * 3] = (Uint8)(255.0 * f);
             colors[y * info.width * 3 + x * 3 + 1] = (Uint8)(255.0 * f);
             colors[y * info.width * 3 + x * 3 + 2] = (Uint8)(255.0 * f);
+        }
+    }
+}
+
+constexpr int resolution = 10;
+void wait(int sec) {
+    register int i;
+    register int j;
+    for(i = 0; i < sec; ++i) {
+        for(j = 0; j < resolution; ++j) {
+            poll();
+            SDL_Delay(1000/resolution);
         }
     }
 }
@@ -104,20 +131,13 @@ int main()
     Uint8* colors = (Uint8*)malloc(sizeof(Uint8) * info.width * info.height * 3);
 
     int p;
-    for(p = 2; p < 10; p++) {
-        genColors(colors, p);
-        render(screen, colors);
-    }
-
-    /* While the program is running
-    while (!quit)
-    {
-        while(SDL_PollEvent(&event))
-        {
+    for(;;) {
+        for(p = 2; p < 10; p++) {
+            genColors(colors, p);
+            render(screen, colors);
+            wait(20);
         }
-
     }
-    */
 
     SDL_FreeSurface(screen);
 
