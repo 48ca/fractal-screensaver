@@ -76,15 +76,16 @@ void render(SDL_Surface* screen, uint8_t* colors) {
     }
 }
 
-template <typename T>
-int mandelIterations(std::complex<float> m, int max, T power) {
+template <bool B, typename T>
+int mandelIterations(std::complex<float>& m, int& max, T& power) {
     std::complex<float> z = 0;
-    int i;
+    register int i;
     for(i = 0 ; i < max ; ++i) {
         if(std::abs(z) > 2) break;
-        // Boat
-        // z = std::pow(std::complex<float>(std::abs(std::real(z)), std::abs(std::imag(z))), power) + m;
-        z = std::pow(z, power) + m;
+        if(B)
+            z = std::pow(std::complex<float>(std::abs(std::real(z)), std::abs(std::imag(z))), power) + m;
+        else
+            z = std::pow(z, power) + m;
     }
     return max-i;
 }
@@ -112,7 +113,7 @@ void genColors(uint8_t* colors, T power) {
             float m_y = aspect * (1 + 1.0 * y/info.height);
 
             std::complex<float> m(m_x, m_y);
-            int i = mandelIterations<T>(m, info.iters, power);
+            int i = mandelIterations<false, T>(m, info.iters, power);
             float l = (float)i/loop_every;
             float p = l - std::floor(l);
             int f = (int)std::floor(l) % color_map_length;
@@ -137,7 +138,12 @@ void wait(int sec) {
     }
 }
 
+SDL_Surface* scr;
+uint8_t* colors;
+
 void exit() {
+    free(colors);
+    SDL_FreeSurface(scr);
     SDL_Quit();
 }
 
@@ -153,26 +159,24 @@ int main()
 
     SDL_WM_SetCaption("SDL Test", NULL);
 
-    SDL_Surface* screen = SDL_SetVideoMode(info.width, info.height, 32, SDL_FULLSCREEN | SDL_HWSURFACE | SDL_DOUBLEBUF);
+    scr = SDL_SetVideoMode(info.width, info.height, 32, SDL_FULLSCREEN | SDL_HWSURFACE | SDL_DOUBLEBUF);
 
-    format = screen->format;
+    format = scr->format;
     surface = SDL_CreateRGBSurface(SDL_HWSURFACE, info.width, info.height, format->BitsPerPixel,
             format->Rmask, format->Gmask, format->Bmask, format->Amask);
 
     size_t colors_length = sizeof(uint8_t) * info.width * info.height * 3;
-    uint8_t* colors = (uint8_t*)malloc(colors_length);
+    colors = (uint8_t*)malloc(colors_length);
 
     float p;
     for(;;) {
         for(p = 2; p < 10; p+=1) {
             genColors<float>(colors, p);
-            render(screen, colors);
+            render(scr, colors);
             wait(info.wait);
             // render(screen, NULL);
         }
     }
-
-    SDL_FreeSurface(screen);
 
     return 0;
 
