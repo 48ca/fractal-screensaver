@@ -1,6 +1,7 @@
-#include <SDL/SDL.h>
+#include <SDL.h>
 #include <stdlib.h>
 #include <complex>
+#include <cmath>
 
 struct info {
     int num_boxes;
@@ -14,12 +15,12 @@ struct info {
 
 void genInfo() {
 
-    const SDL_VideoInfo* vidInfo = SDL_GetVideoInfo();   //<-- calls SDL_GetVideoInfo();
+    const SDL_VideoInfo* vidInfo = SDL_GetVideoInfo();
 
     info.width = vidInfo->current_w;
     info.height = vidInfo->current_h;
-    info.num_boxes = 40; // number of boxes across
-    info.delay = 10;
+    info.num_boxes = 30; // number of boxes across
+    info.delay = 15;
     info.box_width = info.width/info.num_boxes;
     info.box_height = info.box_width;
     info.num_boxes_down = info.height/info.box_height;
@@ -36,20 +37,20 @@ void poll() {
     }
 }
 
-void setPixel(SDL_Surface *screen, int x, int y, Uint8* colors)
+SDL_PixelFormat* format;
+void setPixel(SDL_Surface *screen, int x, int y, uint8_t* colors)
 {
     int width = screen->pitch;
-    Uint32 *pixels = (Uint32*) screen->pixels + y * (width / 4) + x;
-    SDL_PixelFormat *format = screen->format;
+    uint32_t *pixels = (uint32_t*) screen->pixels + y * (width / 4) + x;
 
-    *pixels = SDL_MapRGB(format, colors[0], colors[1], colors[2] );
+    if(colors)
+        *pixels = SDL_MapRGB(format, colors[0], colors[1], colors[2] );
+    else
+        *pixels = SDL_MapRGB(format, 0, 0, 0);
 }
 
-void render(SDL_Surface* screen, Uint8* colors) {
-    SDL_PixelFormat* format = screen->format;
-    SDL_Surface* surface = SDL_CreateRGBSurface(SDL_HWSURFACE, info.width, info.height, format->BitsPerPixel,
-            format->Rmask, format->Gmask, format->Bmask, format->Amask);
-
+SDL_Surface* surface;
+void render(SDL_Surface* screen, uint8_t* colors) {
     register int x, y;
     register int box_x, box_y;
     register int i;
@@ -60,7 +61,7 @@ void render(SDL_Surface* screen, Uint8* colors) {
             register int initial_y = box_y * info.box_height;
             for (y = initial_y; y < info.height && y - initial_y < info.box_height; y++) {
                 for (x = initial_x; x < info.width && x - initial_x < info.box_width; x++) {
-                    setPixel(surface, x, y, colors + (sizeof(Uint8) * (y*info.width*3 + x*3)));
+                    setPixel(surface, x, y, colors ? colors + (sizeof(uint8_t) * (y*info.width*3 + x*3)) : NULL);
                 }
             }
         }
@@ -76,30 +77,45 @@ int mandelIterations(std::complex<float> m, int max, int power) {
     int i;
     for(i = 0 ; i < max ; ++i) {
         if(std::abs(z) > 2) break;
+        // Boat
+        // z = std::pow(std::complex<float>(std::abs(std::real(z)), std::abs(std::imag(z))), power) + m;
         z = std::pow(z, power) + m;
     }
     return max-i;
 }
 
-int max = 200;
-void genColors(Uint8* colors, int power) {
+constexpr int color_map_length = 5;
+uint8_t color_map[color_map_length][3] = {
+    {0, 0, 0},
+    {0, 125, 0},
+    {255, 0, 255},
+    {127, 0, 64},
+    {0, 100, 255}
+};
+uint8_t loop_every = 10;
+
+int max = 500;
+void genColors(uint8_t* colors, int power) {
     register int x;
     register int y;
     for(x = 0; x < info.width; x++) {
         poll();
         #pragma omp parallel for
         for(y = 0; y < info.height; y++) {
-            float m_x = -2 + 4.0 * x / info.width;
+            float m_x = -3 + 6.0 * x / info.width;
             float aspect = (float)(info.height)/info.width;
-            float m_y = aspect * (-2 + 4.0 * y/info.height);
+            float m_y = aspect * (-3 + 6.0 * y/info.height);
 
             std::complex<float> m(m_x, m_y);
             int i = mandelIterations(m, max, power);
-            float f = (float)(i)/max;
-
-            colors[y * info.width * 3 + x * 3] = (Uint8)(255.0 * f);
-            colors[y * info.width * 3 + x * 3 + 1] = (Uint8)(255.0 * f);
-            colors[y * info.width * 3 + x * 3 + 2] = (Uint8)(255.0 * f);
+            float l = (float)i/loop_every;
+            float p = l - std::floor(l);
+            int f = (int)std::floor(l) % color_map_length;
+            int c = (int)std::ceil(l) % color_map_length;
+            register int k;
+            #pragma omp simd
+            for(k=0;k<3;++k)
+                colors[y * info.width * 3 + x * 3 + k] = (uint8_t)(color_map[f][k] * (1-p) + color_map[c][k] * p);
         }
     }
 }
@@ -116,8 +132,14 @@ void wait(int sec) {
     }
 }
 
+void exit() {
+    SDL_Quit();
+}
+
 int main()
 {
+    std::atexit(exit);
+
     SDL_Init(SDL_INIT_VIDEO);
 
     SDL_ShowCursor(0);
@@ -128,20 +150,24 @@ int main()
 
     SDL_Surface* screen = SDL_SetVideoMode(info.width, info.height, 32, SDL_FULLSCREEN | SDL_HWSURFACE | SDL_DOUBLEBUF);
 
-    Uint8* colors = (Uint8*)malloc(sizeof(Uint8) * info.width * info.height * 3);
+    format = screen->format;
+    surface = SDL_CreateRGBSurface(SDL_HWSURFACE, info.width, info.height, format->BitsPerPixel,
+            format->Rmask, format->Gmask, format->Bmask, format->Amask);
+
+    size_t colors_length = sizeof(uint8_t) * info.width * info.height * 3;
+    uint8_t* colors = (uint8_t*)malloc(colors_length);
 
     int p;
     for(;;) {
         for(p = 2; p < 10; p++) {
             genColors(colors, p);
             render(screen, colors);
-            wait(20);
+            wait(10);
+            // render(screen, NULL);
         }
     }
 
     SDL_FreeSurface(screen);
-
-    SDL_Quit();
 
     return 0;
 
