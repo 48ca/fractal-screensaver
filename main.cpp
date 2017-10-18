@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <complex>
 #include <cmath>
+#include <array>
+
+constexpr size_t SIMD_SIZE = 8;
 
 struct info {
     int num_boxes;
@@ -23,8 +26,8 @@ void genInfo() {
     info.height = vidInfo->current_h;
     info.num_boxes = 30; // number of boxes across
     info.delay = 15; // in ms
-    info.wait = 5; // in seconds
-    info.iters = 100;
+    info.wait = 30; // in seconds
+    info.iters = 60;
     info.box_width = info.width/info.num_boxes;
     info.box_height = info.box_width;
     info.num_boxes_down = info.height/info.box_height;
@@ -93,35 +96,58 @@ int mandelIterations(std::complex<float>& m, int& max, T& power) {
 constexpr int color_map_length = 5;
 uint8_t color_map[color_map_length][3] = {
     {0, 0, 0},
-    {0, 125, 0},
+    {50, 0, 100},
     {255, 0, 255},
     {127, 0, 64},
     {0, 100, 255}
 };
 uint8_t loop_every = 10;
 
-template<typename T>
+template<typename T, std::size_t N>
 void genColors(uint8_t* colors, T power) {
     register int x;
-    register int y;
+    float aspect = (float)(info.height)/info.width;
     for(x = 0; x < info.width; x++) {
+        float m_x = -.8 + 1.0 * x / info.width;
         poll();
-        #pragma omp parallel for
-        for(y = 0; y < info.height; y++) {
-            float m_x = -.8 + 1.0 * x / info.width;
-            float aspect = (float)(info.height)/info.width;
-            float m_y = aspect * (1 + 1.0 * y/info.height);
 
-            std::complex<float> m(m_x, m_y);
-            int i = mandelIterations<false, T>(m, info.iters, power);
-            float l = (float)i/loop_every;
-            float p = l - std::floor(l);
-            int f = (int)std::floor(l) % color_map_length;
-            int c = (int)std::ceil(l) % color_map_length;
-            register int k;
-            #pragma omp simd
-            for(k=0;k<3;++k)
-                colors[y * info.width * 3 + x * 3 + k] = (uint8_t)(color_map[f][k] * (1-p) + color_map[c][k] * p);
+        #pragma omp parallel for
+        for(unsigned y = 0; y < info.height/N; y++) {
+            std::array<std::complex<float>, N> m;
+            for(unsigned i=0;i<N;++i) {
+                m[i] = std::complex<float>(m_x, aspect * (1 + 1.0 * (y*N + i)/info.height));
+            }
+            std::array<unsigned, N> escaped{};
+            std::array<int, N> iters{};
+            std::array<std::complex<float>, N> zs;
+            register int iter;
+            for(iter=0;iter<info.iters;++iter) {
+                register unsigned n_esc = N;
+                for(unsigned k = 0; k < N; ++k) { n_esc -= escaped[k]; }
+                if(!n_esc) break;
+
+                #pragma omp simd
+                for(unsigned k = 0; k < N; ++k) {
+                    if(!escaped[k])
+                    {
+                        if(std::abs(zs[k]) > 2) {
+                            escaped[k] = 1;
+                            iters[k] = iter;
+                        } else {
+                            zs[k] = std::pow(zs[k], power) + m[k];
+                        }
+                    }
+                }
+            }
+            for(unsigned i = 0; i < N; ++i) {
+                float l = (float)iters[i]/loop_every;
+                float p = l - std::floor(l);
+                int f = (int)std::floor(l) % color_map_length;
+                int c = (int)std::ceil(l) % color_map_length;
+                register int k;
+                for(k=0;k<3;++k)
+                    colors[(y * N + i) * info.width * 3 + x * 3 + k] = (uint8_t)(color_map[f][k] * (1-p) + color_map[c][k] * p);
+            }
         }
     }
 }
@@ -171,7 +197,7 @@ int main()
     float p;
     for(;;) {
         for(p = 2; p < 10; p+=1) {
-            genColors<float>(colors, p);
+            genColors<float, SIMD_SIZE>(colors, p);
             render(scr, colors);
             wait(info.wait);
             // render(screen, NULL);
