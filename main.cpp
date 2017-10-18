@@ -124,6 +124,7 @@ void genColors(uint8_t* colors, struct window<T>* window) {
     register int x;
     for(x = 0; x < info.width; x++) {
         float m_x = window->start_x + window->width_x * x / info.width;
+        poll();
         #pragma omp parallel for
         for(unsigned y = 0; y < info.height/N; y++) {
             std::array<int, N> iters{};
@@ -178,7 +179,7 @@ int main()
 
     genInfo();
 
-    SDL_WM_SetCaption("SDL Test", NULL);
+    SDL_WM_SetCaption("FSS", NULL);
 
     scr = SDL_SetVideoMode(info.width, info.height, 32, SDL_FULLSCREEN | SDL_HWSURFACE | SDL_DOUBLEBUF);
 
