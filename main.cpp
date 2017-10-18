@@ -27,7 +27,7 @@ void genInfo() {
     info.num_boxes = 30; // number of boxes across
     info.delay = 15; // in ms
     info.wait = 30; // in seconds
-    info.iters = 60;
+    info.iters = 70;
     info.box_width = info.width/info.num_boxes;
     info.box_height = info.box_width;
     info.num_boxes_down = info.height/info.box_height;
@@ -77,20 +77,6 @@ void render(SDL_Surface* screen, uint8_t* colors) {
         poll();
         SDL_Delay(info.delay);
     }
-}
-
-template <bool B, typename T>
-int mandelIterations(std::complex<float>& m, int& max, T& power) {
-    std::complex<float> z = 0;
-    register int i;
-    for(i = 0 ; i < max ; ++i) {
-        if(std::abs(z) > 2) break;
-        if(B)
-            z = std::pow(std::complex<float>(std::abs(std::real(z)), std::abs(std::imag(z))), power) + m;
-        else
-            z = std::pow(z, power) + m;
-    }
-    return max-i;
 }
 
 constexpr int color_map_length = 5;
