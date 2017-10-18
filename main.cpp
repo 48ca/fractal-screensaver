@@ -16,6 +16,7 @@ struct info {
     int iters;
     int width;
     int height;
+    float aspect;
 } info;
 
 void genInfo() {
@@ -24,6 +25,7 @@ void genInfo() {
 
     info.width = vidInfo->current_w;
     info.height = vidInfo->current_h;
+    info.aspect = (float)(info.height)/info.width;
     info.num_boxes = 30; // number of boxes across
     info.delay = 15; // in ms
     info.wait = 30; // in seconds
@@ -89,42 +91,142 @@ uint8_t color_map[color_map_length][3] = {
 };
 uint8_t loop_every = 10;
 
+float start_x = -.8;
+float width_x = 1.0;
+float start_y = 1.0;
+// float start_x = -2;
+// float width_x = 4;
+// float start_y = -1;
+
+template<typename T, std::size_t N>
+void mandelGeneralIterations(std::array<int, N>& iters, T m_x, unsigned y, T power) {
+    std::array<std::complex<T>, N> m;
+    #pragma omp simd
+    for(unsigned i=0;i<N;++i) {
+        m[i] = std::complex<T>(m_x, info.aspect * (start_y + width_x * (y*N + i)/info.height));
+    }
+    std::array<unsigned, N> escaped{};
+    std::array<std::complex<T>, N> zs;
+
+    register int iter;
+    for(iter=0;iter<info.iters;++iter) {
+        register unsigned quit = 1;
+        for(unsigned k = 0; k < N; ++k) { quit &= escaped[k]; }
+        if(quit) break;
+
+        #pragma omp simd
+        for(unsigned k = 0; k < N; ++k) {
+            if(!escaped[k])
+            {
+                if(std::abs(zs[k]) > 2) {
+                    escaped[k] = 1;
+                    iters[k] = iter;
+                } else {
+                    zs[k] = std::pow(zs[k], power) + m[k];
+                }
+            }
+        }
+    }
+}
+
+template<typename T, std::size_t N>
+void mandelSquareIterations(std::array<int, N>& iters, T m_x, int x, unsigned y) {
+    std::array<T, N> mi;
+    std::array<unsigned, N> escaped;
+    std::array<T, N> zr;
+    std::array<T, N> zi;
+    std::array<T, N> as;
+
+    #pragma omp simd
+    for(unsigned k=0;k<N;++k) {
+        mi[k]  = info.aspect * (start_y + width_x * (y*N + k)/info.height);
+        escaped[k] = 0;
+        zr[k] = 0;
+        zi[k] = 0;
+        as[k] = 0;
+        iters[k] = 0;
+    }
+
+    register int iter;
+    for(iter = 0; iter < info.iters; ++iter) {
+        register unsigned quit = 1;
+        for(unsigned k = 0; k < N; ++k) { quit &= escaped[k]; }
+        if(quit) break;
+
+        #pragma omp simd
+        for(unsigned k = 0; k < N; ++k) {
+            as[k] = zr[k] * zr[k] + zi[k] * zi[k];
+            escaped[k] |= as[k] > 4;
+            iters[k] += escaped[k] ? 0 : 1;
+            zr[k] = zr[k] * zr[k] - zi[k] * zi[k] + m_x;
+            zi[k] = 2.0 * zr[k] * zi[k] + mi[k];
+        }
+    }
+    if(x == 500 && y == 200) {
+        printf("%d %d: %d %d %d %d %d\n", x, y, iter, iters[0], iters[1], iters[2], iters[3]);
+    }
+}
+
+template<typename T, std::size_t N>
+void mandelSquareIterations2(std::array<int, N>& iters, T m_x, int x, unsigned y) {
+    std::array<T, N> mi;
+    #pragma omp simd
+    for(unsigned i=0;i<N;++i)
+        mi[i] = info.aspect * (start_y + width_x * (y * N  + i)/info.height);
+
+    std::array<unsigned, N> escaped{};
+    std::array<T, N> zr{};
+    std::array<T, N> zi{};
+
+    std::array<T, N> as;
+
+    register int iter;
+    for(iter=0;iter<info.iters;++iter) {
+        register unsigned quit = 1;
+        for(unsigned k = 0; k < N; ++k) { quit &= escaped[k]; }
+        if(quit) break;
+
+        // #pragma omp simd
+        for(unsigned k = 0; k < N; ++k) {
+            as[k] = zr[k] * zr[k] + zi[k] * zi[k];
+            escaped[k] |= as[k] > 4;
+            iters[k] += escaped[k] ? 0 : 1;
+            zr[k] = zr[k] * zr[k] - zi[k] * zi[k] + m_x;
+            zi[k] = 2 * zr[k] * zi[k] + mi[k];
+        }
+
+        /*
+        for(unsigned k = 0; k < N; ++k) {
+            as[k] = zr[k] * zr[k] + zi[k] * zi[k];
+            if(as[k] > 4) {
+                if(!escaped[k]) {
+                    escaped[k] = 1;
+                    iters[k] = iter;
+                }
+            } else {
+                zr[k] = zr[k] * zr[k] - zi[k] * zi[k] + m_x;
+                zi[k] = 2 * zr[k] * zi[k] + mi[k];
+            }
+        }
+        */
+    }
+}
+
 template<typename T, std::size_t N>
 void genColors(uint8_t* colors, T power) {
     register int x;
-    float aspect = (float)(info.height)/info.width;
     for(x = 0; x < info.width; x++) {
-        float m_x = -.8 + 1.0 * x / info.width;
+        float m_x = start_x + width_x * x / info.width;
         poll();
 
-        #pragma omp parallel for
+        // #pragma omp parallel for
         for(unsigned y = 0; y < info.height/N; y++) {
-            std::array<std::complex<float>, N> m;
-            for(unsigned i=0;i<N;++i) {
-                m[i] = std::complex<float>(m_x, aspect * (1 + 1.0 * (y*N + i)/info.height));
-            }
-            std::array<unsigned, N> escaped{};
             std::array<int, N> iters{};
-            std::array<std::complex<float>, N> zs;
-            register int iter;
-            for(iter=0;iter<info.iters;++iter) {
-                register unsigned n_esc = N;
-                for(unsigned k = 0; k < N; ++k) { n_esc -= escaped[k]; }
-                if(!n_esc) break;
 
-                #pragma omp simd
-                for(unsigned k = 0; k < N; ++k) {
-                    if(!escaped[k])
-                    {
-                        if(std::abs(zs[k]) > 2) {
-                            escaped[k] = 1;
-                            iters[k] = iter;
-                        } else {
-                            zs[k] = std::pow(zs[k], power) + m[k];
-                        }
-                    }
-                }
-            }
+            mandelSquareIterations<T, N>(iters, m_x, x, y);
+            // mandelGeneralIterations<T, N>(iters, m_x, y, power);
+
+            #pragma omp simd
             for(unsigned i = 0; i < N; ++i) {
                 float l = (float)iters[i]/loop_every;
                 float p = l - std::floor(l);
