@@ -29,7 +29,7 @@ uint8_t color_map[color_map_length][3] = {
     {127, 0, 64},
     {0, 100, 255}
 };
-uint8_t loop_every = 10;
+uint8_t loop_every = 15;
 
 struct window<float> float_windows[] = {
     // { x-low-start, x-width, y-low-start, max-iterations }
