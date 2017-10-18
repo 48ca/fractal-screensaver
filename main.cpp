@@ -3,38 +3,9 @@
 #include <complex>
 #include <cmath>
 #include <array>
+#include "conf.hpp"
 
-constexpr size_t SIMD_SIZE = 8;
-
-struct info {
-    int num_boxes;
-    int num_boxes_down;
-    int box_width;
-    int box_height;
-    int delay;
-    int wait;
-    int iters;
-    int width;
-    int height;
-    float aspect;
-} info;
-
-void genInfo() {
-
-    const SDL_VideoInfo* vidInfo = SDL_GetVideoInfo();
-
-    info.width = vidInfo->current_w;
-    info.height = vidInfo->current_h;
-    info.aspect = (float)(info.height)/info.width;
-    info.num_boxes = 30; // number of boxes across
-    info.delay = 15; // in ms
-    info.wait = 30; // in seconds
-    info.iters = 70;
-    info.box_width = info.width/info.num_boxes;
-    info.box_height = info.box_width;
-    info.num_boxes_down = info.height/info.box_height;
-
-}
+#define ESCAPE_RADIUS_SQ 4
 
 SDL_Event event;
 void poll() {
@@ -81,35 +52,19 @@ void render(SDL_Surface* screen, uint8_t* colors) {
     }
 }
 
-constexpr int color_map_length = 5;
-uint8_t color_map[color_map_length][3] = {
-    {0, 0, 0},
-    {50, 0, 100},
-    {255, 0, 255},
-    {127, 0, 64},
-    {0, 100, 255}
-};
-uint8_t loop_every = 10;
-
-float start_x = -.8;
-float width_x = 1.0;
-float start_y = 1.0;
-// float start_x = -2;
-// float width_x = 4;
-// float start_y = -1;
-
+// method to (slowly) generate fractals other than the mandelbrot set
 template<typename T, std::size_t N>
-void mandelGeneralIterations(std::array<int, N>& iters, T m_x, unsigned y, T power) {
+void mandelGeneralIterations(std::array<int, N>& iters, struct window<T>* window, T m_x, unsigned y, T power) {
     std::array<std::complex<T>, N> m;
     #pragma omp simd
     for(unsigned i=0;i<N;++i) {
-        m[i] = std::complex<T>(m_x, info.aspect * (start_y + width_x * (y*N + i)/info.height));
+        m[i] = std::complex<T>(m_x, info.aspect * (window->start_y + window->width_x * (y*N + i)/info.height));
     }
     std::array<unsigned, N> escaped{};
     std::array<std::complex<T>, N> zs;
 
     register int iter;
-    for(iter=0;iter<info.iters;++iter) {
+    for(iter=0;iter<window->max_iters;++iter) {
         register unsigned quit = 1;
         for(unsigned k = 0; k < N; ++k) { quit &= escaped[k]; }
         if(quit) break;
@@ -130,111 +85,62 @@ void mandelGeneralIterations(std::array<int, N>& iters, T m_x, unsigned y, T pow
 }
 
 template<typename T, std::size_t N>
-void mandelSquareIterations(std::array<int, N>& iters, T m_x, int x, unsigned y) {
-    std::array<T, N> mi;
-    std::array<unsigned, N> escaped;
-    std::array<T, N> zr;
-    std::array<T, N> zi;
-    std::array<T, N> as;
+void mandelSquareIterations(std::array<int, N>& iters, struct window<T>* window, T m_x, unsigned y) {
+    std::array<T, N> mi; // imaginary parts of coordinates
+    std::array<unsigned, N> escaped{};
+    std::array<T, N> zr{};
+    std::array<T, N> zrq{}; // zr squared to prevent recalculations
+    std::array<T, N> zi{};
+    std::array<T, N> ziq{}; // zi squared to prevent recalculations
+    std::array<T, N> tzr; // temporary place to hold the real z values to do the swap
 
-    #pragma omp simd
-    for(unsigned k=0;k<N;++k) {
-        mi[k]  = info.aspect * (start_y + width_x * (y*N + k)/info.height);
-        escaped[k] = 0;
-        zr[k] = 0;
-        zi[k] = 0;
-        as[k] = 0;
-        iters[k] = 0;
-    }
+    // we need these arrays to take advantage of SIMD
+
+    for(unsigned k=0;k<N;++k)
+        mi[k]  = info.aspect * (window->start_y + window->width_x * (y*N + N - k)/info.height);
 
     register int iter;
-    for(iter = 0; iter < info.iters; ++iter) {
+    for(iter = 0; iter < window->max_iters; ++iter) {
         register unsigned quit = 1;
         for(unsigned k = 0; k < N; ++k) { quit &= escaped[k]; }
         if(quit) break;
 
         #pragma omp simd
         for(unsigned k = 0; k < N; ++k) {
-            as[k] = zr[k] * zr[k] + zi[k] * zi[k];
-            escaped[k] |= as[k] > 4;
+            zrq[k] = zr[k] * zr[k];
+            ziq[k] = zi[k] * zi[k];
+            escaped[k] |= (zrq[k] + ziq[k]) > ESCAPE_RADIUS_SQ;
             iters[k] += escaped[k] ? 0 : 1;
-            zr[k] = zr[k] * zr[k] - zi[k] * zi[k] + m_x;
+            tzr[k] = zrq[k] - ziq[k] + m_x;
             zi[k] = 2.0 * zr[k] * zi[k] + mi[k];
+            zr[k] = tzr[k];
         }
-    }
-    if(x == 500 && y == 200) {
-        printf("%d %d: %d %d %d %d %d\n", x, y, iter, iters[0], iters[1], iters[2], iters[3]);
     }
 }
 
 template<typename T, std::size_t N>
-void mandelSquareIterations2(std::array<int, N>& iters, T m_x, int x, unsigned y) {
-    std::array<T, N> mi;
-    #pragma omp simd
-    for(unsigned i=0;i<N;++i)
-        mi[i] = info.aspect * (start_y + width_x * (y * N  + i)/info.height);
-
-    std::array<unsigned, N> escaped{};
-    std::array<T, N> zr{};
-    std::array<T, N> zi{};
-
-    std::array<T, N> as;
-
-    register int iter;
-    for(iter=0;iter<info.iters;++iter) {
-        register unsigned quit = 1;
-        for(unsigned k = 0; k < N; ++k) { quit &= escaped[k]; }
-        if(quit) break;
-
-        // #pragma omp simd
-        for(unsigned k = 0; k < N; ++k) {
-            as[k] = zr[k] * zr[k] + zi[k] * zi[k];
-            escaped[k] |= as[k] > 4;
-            iters[k] += escaped[k] ? 0 : 1;
-            zr[k] = zr[k] * zr[k] - zi[k] * zi[k] + m_x;
-            zi[k] = 2 * zr[k] * zi[k] + mi[k];
-        }
-
-        /*
-        for(unsigned k = 0; k < N; ++k) {
-            as[k] = zr[k] * zr[k] + zi[k] * zi[k];
-            if(as[k] > 4) {
-                if(!escaped[k]) {
-                    escaped[k] = 1;
-                    iters[k] = iter;
-                }
-            } else {
-                zr[k] = zr[k] * zr[k] - zi[k] * zi[k] + m_x;
-                zi[k] = 2 * zr[k] * zi[k] + mi[k];
-            }
-        }
-        */
-    }
-}
-
-template<typename T, std::size_t N>
-void genColors(uint8_t* colors, T power) {
+void genColors(uint8_t* colors, struct window<T>* window) {
     register int x;
     for(x = 0; x < info.width; x++) {
-        float m_x = start_x + width_x * x / info.width;
-        poll();
-
-        // #pragma omp parallel for
+        float m_x = window->start_x + window->width_x * x / info.width;
+        #pragma omp parallel for
         for(unsigned y = 0; y < info.height/N; y++) {
             std::array<int, N> iters{};
 
-            mandelSquareIterations<T, N>(iters, m_x, x, y);
-            // mandelGeneralIterations<T, N>(iters, m_x, y, power);
+            mandelSquareIterations<T, N>(iters, window, m_x, info.height/N - y);
 
-            #pragma omp simd
             for(unsigned i = 0; i < N; ++i) {
-                float l = (float)iters[i]/loop_every;
-                float p = l - std::floor(l);
-                int f = (int)std::floor(l) % color_map_length;
-                int c = (int)std::ceil(l) % color_map_length;
-                register int k;
-                for(k=0;k<3;++k)
-                    colors[(y * N + i) * info.width * 3 + x * 3 + k] = (uint8_t)(color_map[f][k] * (1-p) + color_map[c][k] * p);
+                if(iters[i] == window->max_iters) {
+                    memset(colors + sizeof(uint8_t) *( ( y * N + i ) * info.width * 3 + x * 3), 0x0, 3);
+                } else {
+                    float l = (float)iters[i]/loop_every;
+                    float p = l - std::floor(l);
+                    int f = (int)std::floor(l) % color_map_length;
+                    int c = (int)std::ceil(l) % color_map_length;
+                    register int k;
+                    for(k=0;k<3;++k)
+                        colors[(y * N + i) * info.width * 3 + x * 3 + k] = (uint8_t)(color_map[f][k] * (1-p) + color_map[c][k] * p);
+                }
             }
         }
     }
@@ -282,13 +188,16 @@ int main()
     size_t colors_length = sizeof(uint8_t) * info.width * info.height * 3;
     colors = (uint8_t*)malloc(colors_length);
 
-    float p;
     for(;;) {
-        for(p = 2; p < 10; p+=1) {
-            genColors<float, SIMD_SIZE>(colors, p);
+        for(uint8_t w=0;w<num_float_windows;++w) {
+            genColors<float, SIMD_SIZE>(colors, &float_windows[w]);
             render(scr, colors);
             wait(info.wait);
-            // render(screen, NULL);
+        }
+        for(uint8_t w=0;w<num_double_windows;++w) {
+            genColors<double, SIMD_SIZE>(colors, &double_windows[w]);
+            render(scr, colors);
+            wait(info.wait);
         }
     }
 
