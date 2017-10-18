@@ -134,13 +134,13 @@ void genColors(uint8_t* colors, struct window<T>* window) {
                 if(iters[i] == window->max_iters) {
                     memset(colors + sizeof(uint8_t) *( ( y * N + i ) * info.width * 3 + x * 3), 0x0, 3);
                 } else {
-                    float l = (float)iters[i]/loop_every;
+                    float l = (float)iters[i]/conf::loop_every;
                     float p = l - std::floor(l);
-                    int f = (int)std::floor(l) % color_map_length;
-                    int c = (int)std::ceil(l) % color_map_length;
+                    int f = (int)std::floor(l) % conf::color_map_length;
+                    int c = (int)std::ceil(l) % conf::color_map_length;
                     register int k;
                     for(k=0;k<3;++k)
-                        colors[(y * N + i) * info.width * 3 + x * 3 + k] = (uint8_t)(color_map[f][k] * (1-p) + color_map[c][k] * p);
+                        colors[(y * N + i) * info.width * 3 + x * 3 + k] = (uint8_t)(conf::color_map[f][k] * (1-p) + conf::color_map[c][k] * p);
                 }
             }
         }
@@ -190,16 +190,18 @@ int main()
     colors = (uint8_t*)malloc(colors_length);
 
     for(;;) {
-        for(uint8_t w=0;w<num_float_windows;++w) {
-            genColors<float, SIMD_SIZE>(colors, &float_windows[w]);
+        for(uint8_t w=0;w<conf::num_float_windows;++w) {
+            genColors<float, conf::SIMD_SIZE>(colors, &conf::float_windows[w]);
             render(scr, colors);
             wait(info.wait);
         }
-        for(uint8_t w=0;w<num_double_windows;++w) {
-            genColors<double, SIMD_SIZE>(colors, &double_windows[w]);
+        #ifdef USING_DOUBLE_PREC
+        for(uint8_t w=0;w<conf::num_double_windows;++w) {
+            genColors<double, conf::SIMD_SIZE>(colors, &conf::double_windows[w]);
             render(scr, colors);
             wait(info.wait);
         }
+        #endif
     }
 
     return 0;
