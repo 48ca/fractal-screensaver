@@ -102,6 +102,7 @@ void mandelSquareIterations(std::array<int, N>& iters, struct window<T>* window,
     register int iter;
     for(iter = 0; iter < window->max_iters; ++iter) {
         register unsigned quit = 1;
+        #pragma omp simd
         for(unsigned k = 0; k < N; ++k) { quit &= escaped[k]; }
         if(quit) break;
 
