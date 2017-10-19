@@ -121,6 +121,28 @@ void mandelSquareIterations(std::array<int, N>& iters, const struct window<T>& w
     }
 }
 
+void gaussianBlur(uint8_t* colors) {
+    uint8_t* colors_new = (uint8_t*)malloc(sizeof(uint8_t) * 3 * info.width * info.height);
+    #pragma omp parallel
+    for(int x = 1; x < info.width-1; ++x) {
+        for(int y = 1; y < info.height-1; ++y) {
+            for(unsigned i = 0; i < 3; ++i) {
+                unsigned place = (y * info.width + x)*3 + i;
+                colors_new[place] =
+                    1./16 * colors[(place - (info.width - 1)*3)] +
+                    1./16 * colors[(place - (info.width + 1)*3)] +
+                    1./16 * colors[(place + (info.width - 1)*3)] +
+                    1./16 * colors[(place + (info.width + 1)*3)] +
+                    1./8  * colors[(place - (info.width) * 3)] +
+                    1./8  * colors[(place + (info.width) * 3)] +
+                    1./8  * colors[(place - 3)] +
+                    1./8  * colors[(place + 3)] +
+                    1./4  * colors[place];
+            }
+        }
+    }
+}
+
 template<typename T, std::size_t N>
 void genColors(uint8_t* colors, const struct window<T>& window) {
     register int x;
@@ -148,6 +170,7 @@ void genColors(uint8_t* colors, const struct window<T>& window) {
             }
         }
     }
+    // gaussianBlur(colors);
 }
 
 constexpr int resolution = 10;
