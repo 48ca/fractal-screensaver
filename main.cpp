@@ -8,6 +8,7 @@
 #define ESCAPE_RADIUS_SQ 4
 
 SDL_Event event;
+bool mouseMoved = false;
 void poll() {
     SDL_PollEvent(&event);
     switch(event.type) {
@@ -39,7 +40,8 @@ void render(SDL_Surface* screen, uint8_t* colors) {
         for (box_x = i, box_y = 0; box_x >= 0; box_x--, box_y++) {
             register int initial_x = box_x * info.box_width;
             register int initial_y = box_y * info.box_height;
-            for (y = initial_y; y < info.height && y - initial_y < info.box_height; y++) {
+            for (y = initial_y; y - initial_y < info.box_height; y++) {
+                if(y >= info.height) break;
                 for (x = initial_x; x < info.width && x - initial_x < info.box_width; x++) {
                     setPixel(surface, x, y, colors ? colors + (sizeof(uint8_t) * (y*info.width*3 + x*3)) : NULL);
                 }
@@ -126,7 +128,7 @@ void genColors(uint8_t* colors, const struct window<T>& window) {
         float m_x = window.start_x + window.width_x * x / info.width;
         poll();
         #pragma omp parallel for
-        for(unsigned y = 0; y < info.height/N; y++) {
+        for(unsigned y = 0; y < (info.height+N-1)/N; y++) { // the condition is: y < ceil(info.height/N); this is why we need the extra space in colors[];
             std::array<int, N> iters{};
 
             mandelSquareIterations<T, N>(iters, window, m_x, info.height/N - y);
@@ -187,7 +189,7 @@ int main()
     surface = SDL_CreateRGBSurface(SDL_HWSURFACE, info.width, info.height, format->BitsPerPixel,
             format->Rmask, format->Gmask, format->Bmask, format->Amask);
 
-    size_t colors_length = sizeof(uint8_t) * info.width * info.height * 3;
+    size_t colors_length = sizeof(uint8_t) * info.width * (info.height + conf::SIMD_SIZE) * 3; // We add the SIMD size to have a buffer to write unused data
     colors = (uint8_t*)malloc(colors_length); // freed in exit()
 
     for(;;) {

@@ -16,7 +16,7 @@ void genInfo() {
     info.wait = 30; // in seconds
     info.box_width = info.width/info.num_boxes;
     info.box_height = info.box_width;
-    info.num_boxes_down = info.height/info.box_height;
+    info.num_boxes_down = std::ceil((float)info.height/info.box_height);
 
 }
 
