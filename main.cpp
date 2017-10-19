@@ -85,7 +85,7 @@ void mandelGeneralIterations(std::array<int, N>& iters, struct window<T>* window
 }
 
 template<typename T, std::size_t N>
-void mandelSquareIterations(std::array<int, N>& iters, struct window<T>* window, T m_x, unsigned y) {
+void mandelSquareIterations(std::array<int, N>& iters, const struct window<T>& window, T m_x, unsigned y) {
     std::array<T, N> mi; // imaginary parts of coordinates
     std::array<unsigned, N> escaped{};
     std::array<T, N> zr{};
@@ -97,10 +97,10 @@ void mandelSquareIterations(std::array<int, N>& iters, struct window<T>* window,
     // we need these arrays to take advantage of SIMD
 
     for(unsigned k=0;k<N;++k)
-        mi[k]  = info.aspect * (window->start_y + window->width_x * (y*N + N - k)/info.height);
+        mi[k]  = info.aspect * (window.start_y + window.width_x * (y*N + N - k)/info.height);
 
     register int iter;
-    for(iter = 0; iter < window->max_iters; ++iter) {
+    for(iter = 0; iter < window.max_iters; ++iter) {
         register unsigned quit = 1;
         #pragma omp simd
         for(unsigned k = 0; k < N; ++k) { quit &= escaped[k]; }
@@ -120,10 +120,10 @@ void mandelSquareIterations(std::array<int, N>& iters, struct window<T>* window,
 }
 
 template<typename T, std::size_t N>
-void genColors(uint8_t* colors, struct window<T>* window) {
+void genColors(uint8_t* colors, const struct window<T>& window) {
     register int x;
     for(x = 0; x < info.width; x++) {
-        float m_x = window->start_x + window->width_x * x / info.width;
+        float m_x = window.start_x + window.width_x * x / info.width;
         poll();
         #pragma omp parallel for
         for(unsigned y = 0; y < info.height/N; y++) {
@@ -132,7 +132,7 @@ void genColors(uint8_t* colors, struct window<T>* window) {
             mandelSquareIterations<T, N>(iters, window, m_x, info.height/N - y);
 
             for(unsigned i = 0; i < N; ++i) {
-                if(iters[i] == window->max_iters) {
+                if(iters[i] == window.max_iters) {
                     memset(colors + sizeof(uint8_t) *( ( y * N + i ) * info.width * 3 + x * 3), 0x0, 3);
                 } else {
                     float l = (float)iters[i]/conf::loop_every;
@@ -188,17 +188,17 @@ int main()
             format->Rmask, format->Gmask, format->Bmask, format->Amask);
 
     size_t colors_length = sizeof(uint8_t) * info.width * info.height * 3;
-    colors = (uint8_t*)malloc(colors_length);
+    colors = (uint8_t*)malloc(colors_length); // freed in exit()
 
     for(;;) {
-        for(uint8_t w=0;w<conf::num_float_windows;++w) {
-            genColors<float, conf::SIMD_SIZE>(colors, &conf::float_windows[w]);
+        for(uint8_t w=0;w<conf::float_windows.size();++w) {
+            genColors<float, conf::SIMD_SIZE>(colors, conf::float_windows[w]);
             render(scr, colors);
             wait(info.wait);
         }
         #ifdef USING_DOUBLE_PREC
-        for(uint8_t w=0;w<conf::num_double_windows;++w) {
-            genColors<double, conf::SIMD_SIZE>(colors, &conf::double_windows[w]);
+        for(uint8_t w=0;w<conf::double_windows.size();++w) {
+            genColors<double, conf::SIMD_SIZE>(colors, conf::double_windows[w]);
             render(scr, colors);
             wait(info.wait);
         }

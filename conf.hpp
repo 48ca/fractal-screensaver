@@ -1,4 +1,5 @@
 #include "types.hpp"
+#include <vector>
 
 #ifndef CONF_H
 #define CONF_H
@@ -32,21 +33,14 @@ namespace conf {
     };
     uint8_t loop_every = 15;
 
-    struct window<float> float_windows[] = {
+    const std::vector<struct window<float>> float_windows = {
         // { x-low-start, x-width, y-low-start, max-iterations }
         {0, 0.26, 1.0405, 200},
         {-1.945, .005, -0.0025, 300},
         {-.8, 1.0, 1.0, 70},
         {-0.7625, 0.01, 0.1202, 500}
     };
-    int num_float_windows = sizeof(float_windows)/sizeof(struct window<float>);
 
-    // Uncomment the following line to enable the use of double-precision render windows
-    // Keep in mind, they take longer to compute
-    // #define USING_DOUBLE_PREC
-    #ifdef USING_DOUBLE_PREC
-    struct window<double> double_windows[] = { /* must be non-empty */ };
-    int num_double_windows = sizeof(double_windows)/sizeof(struct window<double>);
-    #endif
+    const std::vector<struct window<double>> double_windows = { };
 }
 #endif // CONF_H
