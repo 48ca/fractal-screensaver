@@ -141,6 +141,8 @@ void gaussianBlur(uint8_t* colors) {
             }
         }
     }
+    memcpy(colors, colors_new, 3 * info.width * info.height);
+    free(colors_new);
 }
 
 template<typename T, std::size_t N>
@@ -221,13 +223,11 @@ int main()
             render(scr, colors);
             wait(info.wait);
         }
-        #ifdef USING_DOUBLE_PREC
         for(uint8_t w=0;w<conf::double_windows.size();++w) {
             genColors<double, conf::SIMD_SIZE>(colors, conf::double_windows[w]);
             render(scr, colors);
             wait(info.wait);
         }
-        #endif
     }
 
     return 0;
